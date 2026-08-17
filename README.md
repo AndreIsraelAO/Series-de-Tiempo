@@ -22,6 +22,8 @@ error dentro de muestra y te deja pronosticar a `h` períodos.
 
 ### Pestañas
 
+- **Descomposición** — separa la serie en tendencia, estacionalidad y residuo, con
+  selector aditivo/multiplicativo y la tabla de índices estacionales estimados.
 - **Pronóstico** — serie observada, valores ajustados, pronóstico con banda del 95 %,
   tabla de RMSE / MAE / MAPE y el resumen completo del modelo.
 - **Residuales** — residuales en el tiempo, su ACF y su histograma, para verificar
@@ -37,8 +39,14 @@ R 4.x y tres paquetes:
 install.packages(c("shiny", "forecast", "ggplot2"))
 ```
 
-Opcional: `astsa`, si quieres usar la serie de ejemplo Johnson & Johnson.
-Sin ella, la app trae `AirPassengers`, que viene con R.
+Para la serie de ejemplo Johnson & Johnson —ganancias trimestrales por acción,
+1960–1980— hace falta además:
+
+```r
+install.packages("astsa")
+```
+
+Sin ella la app funciona igual, con `AirPassengers` como serie de ejemplo.
 
 ## Cómo ejecutarla
 

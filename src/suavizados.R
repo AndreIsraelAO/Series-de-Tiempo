@@ -282,8 +282,8 @@ ui <- fluidPage(
 
       hr(),
       h4("3. Pronóstico"),
-      sliderInput("h", "Horizonte (h períodos adelante):",
-                  min = 1, max = 36, value = 8, step = 1),
+      sliderInput("h", "Horizonte (períodos adelante):",
+                  min = 1, max = 12, value = 8, step = 1),
 
       hr(),
       div(style = "font-size:12px; color:#546e7a;", uiOutput("infoSerie"))
@@ -294,6 +294,26 @@ ui <- fluidPage(
       uiOutput("aviso"),
       tabsetPanel(
         type = "tabs",
+
+        tabPanel(
+          "Descomposición",
+          br(),
+          radioButtons("dec_tipo", "Tipo de descomposición:",
+                       choices = c("Aditiva"       = "additive",
+                                   "Multiplicativa" = "multiplicative"),
+                       selected = "multiplicative", inline = TRUE),
+          helpText(
+            "Aditiva: y = tendencia + estacionalidad + residuo. Supone que la ",
+            "amplitud estacional es constante. Multiplicativa: y = tendencia × ",
+            "estacionalidad × residuo, para cuando la estacionalidad crece con el ",
+            "nivel de la serie. Compara ambas mirando el panel de residuo: si queda ",
+            "un patrón visible en forma de abanico, el tipo elegido no es el adecuado."
+          ),
+          plotOutput("plotDescomp", height = "500px"),
+          br(),
+          h4("Índices estacionales estimados"),
+          tableOutput("tablaEstacional")
+        ),
 
         tabPanel(
           "Pronóstico",
@@ -409,6 +429,79 @@ server <- function(input, output, session) {
                  border-radius:6px; margin-bottom:14px; font-size:14px;",
         strong("Aviso: "), m$nota)
   })
+
+  # --- Descomposición clásica de la serie ---
+  descomposicion <- reactive({
+    y  <- serie()
+    fq <- stats::frequency(y)
+
+    validate(need(
+      fq > 1,
+      paste0("La descomposición necesita una serie estacional (frecuencia > 1). ",
+             "Esta serie tiene frecuencia 1, así que no hay componente estacional ",
+             "que separar. Si la frecuencia se detectó mal, corrígela en la barra lateral.")
+    ))
+    validate(need(
+      length(y) >= 2 * fq,
+      paste0("Hacen falta al menos dos ciclos completos (", 2 * fq,
+             " observaciones) para estimar la componente estacional.")
+    ))
+    if (input$dec_tipo == "multiplicative") {
+      validate(need(
+        all(as.numeric(y) > 0, na.rm = TRUE),
+        "La descomposición multiplicativa exige valores estrictamente positivos. Usa la aditiva."
+      ))
+    }
+    stats::decompose(y, type = input$dec_tipo)
+  })
+
+  # Etiquetas legibles para los períodos del ciclo
+  etiquetas_ciclo <- function(fq) {
+    if (fq == 4)  return(paste0("T", 1:4))
+    if (fq == 12) return(c("Ene", "Feb", "Mar", "Abr", "May", "Jun",
+                           "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"))
+    as.character(seq_len(fq))
+  }
+
+  output$plotDescomp <- renderPlot({
+    d <- descomposicion()
+
+    comps <- list("Serie observada" = d$x,
+                  "Tendencia"       = d$trend,
+                  "Estacionalidad"  = d$seasonal,
+                  "Residuo"         = d$random)
+
+    df <- do.call(rbind, Map(function(x, nm) ts_df(x, nm), comps, names(comps)))
+    df$serie <- factor(df$serie, levels = names(comps))
+
+    ggplot(df, aes(t, v)) +
+      geom_line(colour = "#1e88e5", linewidth = 0.7, na.rm = TRUE) +
+      facet_grid(serie ~ ., scales = "free_y", switch = "y") +
+      labs(
+        title = paste0("Descomposición ",
+                       if (input$dec_tipo == "additive") "aditiva" else "multiplicativa",
+                       " (m = ", stats::frequency(d$x), ")"),
+        subtitle = if (input$dec_tipo == "additive")
+          "y(t) = tendencia + estacionalidad + residuo"
+        else
+          "y(t) = tendencia × estacionalidad × residuo",
+        x = "Tiempo", y = NULL
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(strip.placement = "outside",
+            strip.text.y.left = element_text(angle = 90, face = "bold"),
+            panel.spacing = grid::unit(0.8, "lines"))
+  })
+
+  output$tablaEstacional <- renderTable({
+    d  <- descomposicion()
+    fq <- stats::frequency(d$x)
+    data.frame(
+      Período = etiquetas_ciclo(fq),
+      Índice  = round(as.numeric(d$figure), 4),
+      check.names = FALSE
+    )
+  }, striped = TRUE, width = "420px")
 
   # --- Banner con el pronóstico del próximo período ---
   output$banner <- renderUI({
